@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Enterprise ReAct Agent Workspace</title>
+    <style>
+        body { font-family: sans-serif; margin: 40px; background: #f4f5f7; }
+        #chat-container { max-width: 700px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .log-entry { margin: 8px 0; padding: 10px; border-radius: 4px; font-size: 14px; }
+        .status { background: #e3f2fd; color: #0d47a1; }
+        .tool { background: #fff3e0; color: #e65100; font-family: monospace; }
+        .response { background: #e8f5e9; color: #1b5e20; font-weight: bold; }
+        input, button { padding: 10px; font-size: 16px; margin-top: 10px; }
+        input { width: 75%; }
+        button { width: 20%; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div id="chat-container">
+    <h2>Cohere Enterprise Agent Workstation</h2>
+    <div id="logs"></div>
+    <input type="text" id="query" placeholder="e.g. Check salary for EMP-101">
+    <button onclick="runAgent()">Send Query</button>
+</div>
+
+<script>
+function runAgent() {
+    const query = document.getElementById("query").value;
+    const logsDiv = document.getElementById("logs");
+    logsDiv.innerHTML = ""; // Clear previous logs
+
+    const eventSource = new EventSource(`http://localhost:8000/api/chat/stream?query=${encodeURIComponent(query)}`);
+
+    eventSource.addEventListener("status", (e) => {
+        const data = JSON.parse(e.data);
+        logsDiv.innerHTML += `<div class="log-entry status">ℹ️ ${data.message}</div>`;
+    });
+
+    eventSource.addEventListener("tool_call", (e) => {
+        const data = JSON.parse(e.data);
+        logsDiv.innerHTML += `<div class="log-entry tool">🛠️ Executing Tool: <b>${data.tool}</b> with args: ${JSON.stringify(data.arguments)}</div>`;
+    });
+
+    eventSource.addEventListener("tool_result", (e) => {
+        const data = JSON.parse(e.data);
+        logsDiv.innerHTML += `<div class="log-entry tool">✅ Tool Output: ${JSON.stringify(data.result)}</div>`;
+    });
+
+    eventSource.addEventListener("final_answer", (e) => {
+        const data = JSON.parse(e.data);
+        logsDiv.innerHTML += `<div class="log-entry response">🎯 Agent Answer: <br>${data.response}</div>`;
+        eventSource.close();
+    });
+
+    eventSource.onerror = (err) => {
+        console.error("EventSource failed:", err);
+        eventSource.close();
+    };
+}
+</script>
+
+</body>
+</html>

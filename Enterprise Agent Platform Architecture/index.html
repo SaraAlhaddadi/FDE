@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>Cohere Enterprise Platform - MCP & Audit Ledger</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 20px; display: flex; justify-content: center; }
+        .container { width: 100%; max-width: 950px; display: flex; flex-direction: column; height: 92vh; }
+        .header { display: flex; justify-content: space-between; align-items: center; background: #1e293b; padding: 15px 20px; border-radius: 12px; border: 1px solid #334155; margin-bottom: 12px; }
+        .title { font-size: 1.2rem; font-weight: bold; color: #38bdf8; }
+        .user-select { background: #0f172a; color: white; padding: 6px 12px; border-radius: 6px; border: 1px solid #475569; }
+        .chat-box { flex: 1; overflow-y: auto; background: #1e293b; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 12px; border: 1px solid #334155; }
+        .msg { padding: 12px 16px; border-radius: 8px; max-width: 80%; line-height: 1.6; }
+        .user { background: #0284c7; align-self: flex-end; }
+        .assistant { background: #334155; align-self: flex-start; }
+        .card { background: #0f172a; border-inline-start: 4px solid #38bdf8; padding: 10px 14px; border-radius: 6px; font-family: monospace; font-size: 0.88rem; }
+        .card.hitl { border-color: #ef4444; background: #2d1215; }
+        .card.metrics { border-color: #a855f7; }
+        .card.eval { border-color: #10b981; background: #064e3b22; }
+        .btn-approve { background: #10b981; color: white; border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-weight: bold; margin-top: 8px; }
+        .btn-reject { background: #ef4444; color: white; border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-weight: bold; margin-top: 8px; margin-inline-start: 5px; }
+        .btn-audit { background: #475569; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: bold; margin-inline-start: 10px; }
+        .input-area { display: flex; gap: 10px; margin-top: 12px; }
+        input { flex: 1; padding: 14px; border-radius: 8px; border: 1px solid #334155; background: #1e293b; color: white; font-size: 1rem; }
+        button.send-btn { padding: 14px 24px; background: #0284c7; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <span class="title">🚀 منصة Cohere Agentic (MCP Server & Audit)</span>
+            <div>
+                <select id="userId" class="user-select">
+                    <option value="user_admin">سارة (مدير نظام - الأدوار كاملة)</option>
+                    <option value="user_staff">أحمد (موظف - استعلام السياسات فقط)</option>
+                </select>
+                <button class="btn-audit" onclick="fetchAuditLogs()">📋 سجلات التدقيق</button>
+            </div>
+        </div>
+        <div class="chat-box" id="chatBox">
+            <div class="msg assistant">مرحباً بك! منصة المؤسسات تعمل الآن عبر بروتوكول Model Context Protocol (MCP) مع تسجيل أمني كامل لسجلات التدقيق (Audit Ledger).</div>
+        </div>
+        <div class="input-area">
+            <input type="text" id="userInput" placeholder="اسأل عن السياسات أو جرب طلب تعديل راتب..." onkeydown="if(event.key==='Enter') sendQuery()">
+            <button class="send-btn" onclick="sendQuery()">إرسال</button>
+        </div>
+    </div>
+
+    <script>
+        const sessionId = "session_demo_" + Math.floor(Math.random() * 1000);
+
+        async function fetchAuditLogs() {
+            const res = await fetch("/api/v2/audit/logs");
+            const data = await res.json();
+            const chatBox = document.getElementById("chatBox");
+            
+            let logHtml = `<b>📋 [سجل التدقيق المؤسسي - Audit Ledger]:</b><br><ul style="padding-inline-start: 20px;">`;
+            data.audit_logs.slice(0, 5).forEach(log => {
+                logHtml += `<li><b>[${log.timestamp.split('T')[1].split('.')[0]}]</b> User: ${log.user_id} (${log.user_role}) | Action: <b>${log.action_type}</b> | Tool: ${log.tool_name || 'N/A'} | Status: <span style="color:#38bdf8">${log.status}</span></li>`;
+            });
+            logHtml += `</ul>`;
+
+            chatBox.innerHTML += `<div class="card metrics">${logHtml}</div>`;
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        async function sendQuery() {
+            const input = document.getElementById("userInput");
+            const chatBox = document.getElementById("chatBox");
+            const userId = document.getElementById("userId").value;
+            const query = input.value.trim();
+            if (!query) return;
+
+            chatBox.innerHTML += `<div class="msg user">${query}</div>`;
+            input.value = "";
+            chatBox.scrollTop = chatBox.scrollHeight;
+
+            const response = await fetch("/api/v2/agent/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ session_id: sessionId, user_id: userId, user_query: query })
+            });
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                const text = decoder.decode(value);
+                const lines = text.split("\n\n");
+
+                for (const line of lines) {
+                    if (line.startsWith("data: ")) {
+                        const event = JSON.parse(line.replace("data: ", ""));
+
+                        if (event.type === "thinking") {
+                            chatBox.innerHTML += `<div class="card">🧠 [تفكير الوكيل - MCP]: ${event.content}</div>`;
+                        } else if (event.type === "tool_start") {
+                            chatBox.innerHTML += `<div class="card">🛠️ [تنفيذ أداة عبر MCP]: <b>${event.tool}</b></div>`;
+                        } else if (event.type === "tool_result") {
+                            chatBox.innerHTML += `<div class="card">✅ [استجابة MCP Server]: ${JSON.stringify(event.result)}</div>`;
+                        } else if (event.type === "hitl_approval_required") {
+                            chatBox.innerHTML += `
+                                <div class="card hitl" id="hitl_${event.tool_call_id}">
+                                    ⚠️ <b>[مطلوب موافقة بشرية - HITL]:</b> <b>${event.tool}</b> (${JSON.stringify(event.args)})
+                                    <br>
+                                    <button class="btn-approve" onclick="respondApproval('${event.tool_call_id}', '${event.tool}', ${JSON.stringify(event.args)}, true)">موافقة واعتماد</button>
+                                    <button class="btn-reject" onclick="respondApproval('${event.tool_call_id}', '${event.tool}', ${JSON.stringify(event.args)}, false)">رفض العملية</button>
+                                </div>`;
+                        } else if (event.type === "security_error") {
+                            chatBox.innerHTML += `<div class="card hitl">⛔ ${event.content}</div>`;
+                        } else if (event.type === "metrics") {
+                            chatBox.innerHTML += `<div class="card metrics">📊 [تتبع الأداء]: زمن الاستجابة: ${event.latency_sec} ثانية</div>`;
+                        } else if (event.type === "final_response") {
+                            chatBox.innerHTML += `<div class="msg assistant">${event.content}</div>`;
+                        } else if (event.type === "eval_badge") {
+                            const scorePct = Math.round(event.score * 100);
+                            const badgeColor = event.is_faithful ? "#10b981" : "#ef4444";
+                            chatBox.innerHTML += `
+                                <div class="card eval" style="border-inline-start-color: ${badgeColor};">
+                                    🛡️ <b>[فحص الجودة - Groundedness]:</b> 
+                                    نسبة الاستناد: <b>${scorePct}%</b> | 
+                                    الحالة: <b>${event.is_faithful ? 'مستند للمستندات ✅' : 'تحذير: هلوسة ⚠️'}</b>
+                                    <br><small>${event.reasoning}</small>
+                                </div>`;
+                        }
+                        chatBox.scrollTop = chatBox.scrollHeight;
+                    }
+                }
+            }
+        }
+
+        async function respondApproval(toolCallId, toolName, toolArgs, approved) {
+            const chatBox = document.getElementById("chatBox");
+            document.getElementById(`hitl_${toolCallId}`).style.opacity = "0.5";
+
+            const response = await fetch("/api/v2/agent/approve", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    session_id: sessionId,
+                    tool_call_id: toolCallId,
+                    tool_name: toolName,
+                    tool_args: toolArgs,
+                    approved: approved
+                })
+            });
+            
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                const text = decoder.decode(value);
+                const lines = text.split("\n\n");
+
+                for (const line of lines) {
+                    if (line.startsWith("data: ")) {
+                        const event = JSON.parse(line.replace("data: ", ""));
+                        if (event.type === "final_response") {
+                            chatBox.innerHTML += `<div class="msg assistant">${event.content}</div>`;
+                        }
+                        chatBox.scrollTop = chatBox.scrollHeight;
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>

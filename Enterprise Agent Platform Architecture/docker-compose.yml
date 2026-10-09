@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  agent-platform:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - COHERE_API_KEY=${COHERE_API_KEY}
+      - QDRANT_URL=http://qdrant:6333
+      - DB_FILE=/data/audit_ledger.db
+      - ENVIRONMENT=production
+    volumes:
+      - sqlite_data:/data
+    depends_on:
+      - qdrant
+    restart: always
+
+  qdrant:
+    image: qdrant/qdrant:v1.10.0
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: always
+
+volumes:
+  sqlite_data:
+  qdrant_data:
